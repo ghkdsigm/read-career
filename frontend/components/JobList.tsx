@@ -1,5 +1,7 @@
 'use client'
 
+import { useMemo, useState } from 'react'
+
 interface Job {
   id?: string
   company_name: string
@@ -15,6 +17,14 @@ interface Job {
 interface JobListProps {
   jobs: Job[]
   loading: boolean
+}
+
+function normalizeText(value: string): string {
+  return value.trim().toLowerCase()
+}
+
+function getSearchTargets(job: Job): string[] {
+  return [job.title, job.company_name, job.location].filter(Boolean)
 }
 
 function getDdayText(deadline?: string): string | null {
@@ -45,7 +55,40 @@ function getDdayText(deadline?: string): string | null {
 }
 
 export default function JobList({ jobs, loading }: JobListProps) {
-  const visibleJobs = jobs.filter((job) => getDdayText(job.deadline) !== '마감지남')
+  const [searchTerm, setSearchTerm] = useState('')
+
+  const visibleJobs = useMemo(
+    () => jobs.filter((job) => getDdayText(job.deadline) !== '마감지남'),
+    [jobs]
+  )
+
+  const normalizedSearchTerm = normalizeText(searchTerm)
+
+  const filteredJobs = useMemo(() => {
+    if (!normalizedSearchTerm) return visibleJobs
+
+    return visibleJobs.filter((job) =>
+      getSearchTargets(job).some((target) =>
+        normalizeText(target).includes(normalizedSearchTerm)
+      )
+    )
+  }, [visibleJobs, normalizedSearchTerm])
+
+  const autocompleteOptions = useMemo(() => {
+    const uniqueTargets = Array.from(
+      new Set(
+        visibleJobs.flatMap((job) =>
+          getSearchTargets(job).map((target) => target.trim()).filter(Boolean)
+        )
+      )
+    )
+
+    if (!normalizedSearchTerm) return uniqueTargets.slice(0, 20)
+
+    return uniqueTargets
+      .filter((target) => normalizeText(target).includes(normalizedSearchTerm))
+      .slice(0, 20)
+  }, [visibleJobs, normalizedSearchTerm])
 
   if (loading) {
     return (
@@ -65,12 +108,47 @@ export default function JobList({ jobs, loading }: JobListProps) {
 
   return (
     <div className="bg-white rounded-lg shadow-md overflow-hidden">
-      <div className="p-4 bg-gray-50 border-b">
-        <h2 className="text-2xl font-semibold">채용 공고 목록 ({visibleJobs.length}개)</h2>
+      <div className="p-4 bg-gray-50 border-b space-y-3">
+        <h2 className="text-2xl font-semibold">채용 공고 목록 ({filteredJobs.length}개)</h2>
+        <div className="space-y-2">
+          <label htmlFor="job-search" className="block text-sm font-medium text-gray-700">
+            검색 (타이틀 / 회사명 / 지역)
+          </label>
+          <div className="flex gap-2">
+            <input
+              id="job-search"
+              list="job-search-options"
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="예: 백엔드, 네이버, 서울"
+              className="w-full p-2 border border-gray-300 rounded-md"
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                className="px-3 py-2 text-sm bg-gray-200 rounded-md hover:bg-gray-300"
+              >
+                초기화
+              </button>
+            )}
+          </div>
+          <datalist id="job-search-options">
+            {autocompleteOptions.map((option) => (
+              <option key={option} value={option} />
+            ))}
+          </datalist>
+        </div>
       </div>
       
       <div className="divide-y">
-        {visibleJobs.map((job, index) => (
+        {filteredJobs.length === 0 && (
+          <div className="p-6 text-center text-gray-500">
+            검색 조건에 맞는 채용 공고가 없습니다.
+          </div>
+        )}
+        {filteredJobs.map((job, index) => (
           <div key={job.id || index} className="p-6 hover:bg-gray-50 transition-colors">
             <div className="flex justify-between items-start">
               <div className="flex-1">
